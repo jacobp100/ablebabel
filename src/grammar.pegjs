@@ -477,6 +477,13 @@ __
 _
   = (WhiteSpace / MultiLineCommentNoLineTerminator)*
 
+// Required whitespace
+__r
+  = (WhiteSpace / LineTerminatorSequence / Comment)+
+
+_r
+  = (WhiteSpace / MultiLineCommentNoLineTerminator)+
+
 // Automatic Semicolon Insertion
 
 EOS
@@ -1277,34 +1284,31 @@ DebuggerStatement
 ArrowFunctionExpression
   = asyncParams:ArrowFunctionParams __ "=>" __ body:ArrowFunctionBody
   {
-    console.log(asyncParams.params, body, asyncParams.async);
     return t.ArrowFunctionExpression(asyncParams.params, body, asyncParams.async);
   }
 
 FunctionDeclaration
-  = FunctionToken __ id:Identifier __
+  = async:("async" __r)?
+    FunctionToken __
+    generator:("*" __)?
+    id:Identifier __
     "(" __ params:(FormalParameterList __)? ")" __
     "{" __ body:FunctionBody __ "}"
     {
-      return {
-        type: "FunctionDeclaration",
-        id: id,
-        params: optionalList(extractOptional(params, 0)),
-        body: body
-      };
+      params = optionalList(extractOptional(params, 0));
+      return t.FunctionDeclaration(id, params, body, Boolean(generator), Boolean(async));
     }
 
 FunctionExpression
-  = FunctionToken __ id:(Identifier __)?
+  = async:("async" __r)?
+    FunctionToken __
+    generator:("*" __)?
+    id:(Identifier __)?
     "(" __ params:(FormalParameterList __)? ")" __
     "{" __ body:FunctionBody __ "}"
     {
-      return {
-        type: "FunctionExpression",
-        id: extractOptional(id, 0),
-        params: optionalList(extractOptional(params, 0)),
-        body: body
-      };
+      params = optionalList(extractOptional(params, 0));
+      return t.FunctionExpression(id, params, body, Boolean(generator), Boolean(async));
     }
 
 FormalParameterList
@@ -1316,7 +1320,7 @@ FunctionBody
   = body:SourceElements? { return t.BlockStatement(optionalList(body)); }
 
 ArrowFunctionParams
-  = async:"async"? __ "(" __ params:(FormalParameterList __)? ")" {
+  = async:("async" __r)? "(" __ params:(FormalParameterList __)? ")" {
     return {
       params: optionalList(extractOptional(params, 0)),
       async: Boolean(async),
