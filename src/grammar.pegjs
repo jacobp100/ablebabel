@@ -227,9 +227,13 @@ BooleanLiteral
 // The "!(IdentifierStart / DecimalDigit)" predicate is not part of the official
 // grammar, it comes from text in section 7.8.3.
 NumericLiteral "number"
-  = value:(NumericLiteralHexValue / NumericLiteralDecimalValue) !(IdentifierStart / DecimalDigit) {
+  = value:NumericLiteralValue !(IdentifierStart / DecimalDigit) {
       return t.NumericLiteral(value);
     }
+
+NumericLiteralValue
+  = NumericLiteralHexValue
+  / NumericLiteralDecimalValue
 
 NumericLiteralDecimalValue
   = DecimalIntegerLiteral "." DecimalDigit* ExponentPart? {
