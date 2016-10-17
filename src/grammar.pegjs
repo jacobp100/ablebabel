@@ -126,12 +126,7 @@ Identifier
   = !ReservedWord name:IdentifierName { return name; }
 
 IdentifierName "identifier"
-  = head:IdentifierStart tail:IdentifierPart* {
-      return {
-        type: "Identifier",
-        name: head + tail.join("")
-      };
-    }
+  = value:$(IdentifierStart IdentifierPart*) { return t.Identifier(value); }
 
 IdentifierStart
   = UnicodeLetter
@@ -557,22 +552,23 @@ Elision
   = "," commas:(__ ",")* { return filledArray(commas.length + 1, null); }
 
 ObjectLiteral
-  = "{" __ "}" { return { type: "ObjectExpression", properties: [] }; }
-  / "{" __ properties:PropertyNameAndValueList __ "}" {
-       return { type: "ObjectExpression", properties: properties };
-     }
-  / "{" __ properties:PropertyNameAndValueList __ "," __ "}" {
-       return { type: "ObjectExpression", properties: properties };
-     }
+  = "{" __ properties:(PropertyNameAndValueList)? __ "}" { return t.ObjectExpression(properties || []); }
+
 PropertyNameAndValueList
+  = properties:PropertyNameAndValueListNoTraillingComma (__ ",")? { return properties; }
+
+PropertyNameAndValueListNoTraillingComma
   = head:PropertyAssignment tail:(__ "," __ PropertyAssignment)* {
       return buildList(head, tail, 3);
     }
 
 PropertyAssignment
   = key:PropertyName __ ":" __ value:AssignmentExpression {
-      return { type: "Property", key: key, value: value, kind: "init" };
+      return t.ObjectProperty(key, value, false, false);
     }
+  / shorthand:Identifier {
+    return t.ObjectProperty(shorthand, shorthand, false, false);
+  }
   / GetToken __ key:PropertyName __
     "(" __ ")" __
     "{" __ body:FunctionBody __ "}"
@@ -1315,11 +1311,6 @@ FunctionExpression
       return t.FunctionExpression(id, params, body, Boolean(generator), Boolean(async));
     }
 
-FormalParameterList
-  = head:Identifier tail:(__ "," __ Identifier)* {
-      return buildList(head, tail, 3);
-    }
-
 FunctionBody
   = body:SourceElements? { return t.BlockStatement(optionalList(body)); }
 
@@ -1336,11 +1327,47 @@ ArrowFunctionBody
   = "{" __ body:FunctionBody __ "}" { return body; }
   / MemberExpression
 
-ArrayDestructuring
-  = "RUHEO"
+FormalParameterList
+  = head:FunctionParameter tail:(__ "," __ FunctionParameter)* rest:(__ "," __ "..." __ Identifier)? {
+      return [].concat(
+        buildList(head, tail, 3),
+        rest ? [t.RestElement(rest[5])] : []
+      );
+    }
+  / "..." __ param:Identifier { return [t.RestElement(param)]; }
 
-ObjectDestructuring
-  = "HRGRGR"
+FunctionParameter
+  = Identifier
+  / ArrayPattern
+  / ObjectPattern
+
+ArrayPattern
+  = "[" __
+    head:FunctionParameter
+    tail:(__ "," __ FunctionParameter)
+    rest:(__ "," __ "..." __ Identifier)? __
+    "]" {
+    return t.ArrayPattern([].concat(buildList(head, tail, 3), rest ? [t.RestElement(rest[4])] : []));
+  }
+  / "[" __ param:Identifier __ "]" {
+    return t.ArrayPattern([param]);
+  }
+
+ObjectPattern
+  = "{" __ properties:(ObjectPatternPropertyList)? __ "}" { return t.ObjectPattern([]); }
+
+ObjectPatternPropertyList
+  = properties:ObjectPatternPropertyListNoTraillingComma (__ ",")? { return properties; }
+
+ObjectPatternPropertyListNoTraillingComma
+  = head:ObjectPatternPropertyAssignment tail:(__ "," __ ObjectPatternPropertyAssignment)* {
+      return buildList(head, tail, 3);
+    }
+
+ObjectPatternPropertyAssignment
+  = key:PropertyName value:(__ ":" __ FunctionParameter)? {
+    return t.ObjectProperty(key, value ? value[3] : key, false, false);
+  }
 
 Program
   // Second arg: Directive (use strict stuff)
