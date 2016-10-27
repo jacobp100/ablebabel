@@ -192,7 +192,6 @@ Keyword
 
 FutureReservedWord
   = ClassToken
-  / ConstToken
   / EnumToken
   / ExportToken
   / ExtendsToken
@@ -448,6 +447,7 @@ IfToken         = "if"         !IdentifierPart
 ImportToken     = "import"     !IdentifierPart
 InstanceofToken = "instanceof" !IdentifierPart
 InToken         = "in"         !IdentifierPart
+LetToken        = "let"        !IdentifierPart
 NewToken        = "new"        !IdentifierPart
 NullToken       = "null"       !IdentifierPart
 ReturnToken     = "return"     !IdentifierPart
@@ -490,11 +490,7 @@ EOS
 EOF
   = !.
 
-// ----- A.2 Number Conversions -----
-
-// Irrelevant.
-
-// ----- A.3 Expressions -----
+// ----- A.2 Expressions -----
 
 PrimaryExpression
   = ThisToken { return t.thisExpression(); }
@@ -539,7 +535,9 @@ Elision
   = "," commas:(__ ",")* { return filledArray(commas.length + 1, null); }
 
 ObjectLiteral
-  = "{" __ properties:(PropertyNameAndValueList)? __ "}" { return t.objectExpression(properties || []); }
+  = "{" __ properties:(PropertyNameAndValueList)? __ "}" {
+      return t.objectExpression(properties || []);
+    }
 
 PropertyNameAndValueList
   = properties:PropertyNameAndValueListNoTraillingComma (__ ",")? { return properties; }
@@ -831,42 +829,42 @@ ConditionalExpression
   = test:LogicalORExpression __
     "?" __ consequent:AssignmentExpression __
     ":" __ alternate:AssignmentExpression {
-    return t.conditionalExpression(test, consequent, alternate);
-  }
+      return t.conditionalExpression(test, consequent, alternate);
+    }
   / LogicalORExpression
 
 ConditionalExpressionNoIn
   = test:LogicalORExpressionNoIn __
     "?" __ consequent:AssignmentExpression __
     ":" __ alternate:AssignmentExpressionNoIn {
-    return t.conditionalExpression(test, consequent, alternate);
-  }
+      return t.conditionalExpression(test, consequent, alternate);
+    }
   / LogicalORExpressionNoIn
 
 AssignmentExpression
   = left:LeftHandSideExpression __
     "=" !"=" __
     right:AssignmentExpression {
-    return t.assignmentExpression('=', left, right);
-  }
+      return t.assignmentExpression('=', left, right);
+    }
   / left:LeftHandSideExpression __
     operator:AssignmentOperator __
     right:AssignmentExpression {
-    return t.assignmentExpression(operator, left, right);
-  }
+      return t.assignmentExpression(operator, left, right);
+    }
   / ConditionalExpression
 
 AssignmentExpressionNoIn
   = left:LeftHandSideExpression __
     "=" !"=" __
     right:AssignmentExpressionNoIn {
-    return t.assignmentExpression('=', left, right);
-  }
+      return t.assignmentExpression('=', left, right);
+    }
   / left:LeftHandSideExpression __
     operator:AssignmentOperator __
     right:AssignmentExpressionNoIn {
-    return t.assignmentExpression(operator, left, right);
-  }
+      return t.assignmentExpression(operator, left, right);
+    }
   / ConditionalExpressionNoIn
 
 AssignmentOperator
@@ -897,7 +895,7 @@ ExpressionNoIn
         : head;
     }
 
-// ----- A.4 Statements -----
+// ----- A.3 Statements -----
 
 Statement
   = Block
@@ -918,39 +916,41 @@ Statement
 
 Block
   = "{" __ body:(StatementList __)? "}" {
-    return t.blockStatement(optionalList(extractOptional(body, 0)));
-  }
+      return t.blockStatement(optionalList(extractOptional(body, 0)));
+    }
 
 StatementList
   = head:Statement tail:(__ Statement)* { return buildList(head, tail, 1); }
 
 VariableToken
-  = VarToken { return 'var'; }
+  = ConstToken { return 'const'; }
+  / LetToken { return 'let'; }
+  / VarToken { return 'var'; }
 
 VariableStatement
   = kind:VariableToken __ declarations:VariableDeclarationList EOS {
-    return t.variableDeclaration(kind, declarations);
-  }
+      return t.variableDeclaration(kind, declarations);
+    }
 
 VariableDeclarationList
   = head:VariableDeclaration tail:(__ "," __ VariableDeclaration)* {
-    return buildList(head, tail, 3);
-  }
+      return buildList(head, tail, 3);
+    }
 
 VariableDeclarationListNoIn
   = head:VariableDeclarationNoIn tail:(__ "," __ VariableDeclarationNoIn)* {
-    return buildList(head, tail, 3);
-  }
+      return buildList(head, tail, 3);
+    }
 
 VariableDeclaration
   = id:Identifier init:(__ Initialiser)? {
-    return t.variableDeclarator(id, extractOptional(init, 1));
-  }
+      return t.variableDeclarator(id, extractOptional(init, 1));
+    }
 
 VariableDeclarationNoIn
   = id:Identifier init:(__ InitialiserNoIn)? {
-    return t.variableDeclarator(id, extractOptional(init, 1));
-  }
+      return t.variableDeclarator(id, extractOptional(init, 1));
+    }
 
 Initialiser
   = "=" !"=" __ expression:AssignmentExpression { return expression; }
@@ -963,20 +963,20 @@ EmptyStatement
 
 ExpressionStatement
   = !("{" / FunctionToken) expression:Expression EOS {
-    return t.expressionStatement(expression);
-  }
+      return t.expressionStatement(expression);
+    }
 
 IfStatement
   = IfToken __ "(" __ test:Expression __ ")" __
     consequent:Statement __
     ElseToken __
     alternate:Statement {
-    return t.ifStatement(test, consequent, alternate);
-  }
+      return t.ifStatement(test, consequent, alternate);
+    }
   / IfToken __ "(" __ test:Expression __ ")" __
     consequent:Statement {
-    return t.ifStatement(test, consequent, null);
-  }
+      return t.ifStatement(test, consequent, null);
+    }
 
 IterationStatement
   = DoToken __
@@ -1044,39 +1044,39 @@ IterationStatement
 
 ContinueStatement
   = ContinueToken EOS {
-    return t.continueStatement(null);
-  }
+      return t.continueStatement(null);
+    }
   / ContinueToken _ label:Identifier EOS {
-    return t.continueStatement(label);
-  }
+      return t.continueStatement(label);
+    }
 
 BreakStatement
   = BreakToken EOS {
-    return t.breakStatement(label);
-  }
+      return t.breakStatement(label);
+    }
   / BreakToken _ label:Identifier EOS {
-    return t.breakStatement(label);
-  }
+      return t.breakStatement(label);
+    }
 
 ReturnStatement
   = ReturnToken EOS {
-    return t.returnStatement(null);
-  }
+      return t.returnStatement(null);
+    }
   / ReturnToken _ argument:Expression EOS {
-    return t.returnStatement(argument);
-  }
+      return t.returnStatement(argument);
+    }
 
 WithStatement
   = WithToken __ "(" __ object:Expression __ ")" __
     body:Statement {
-    return t.withStatement(object, body);
-  }
+      return t.withStatement(object, body);
+    }
 
 SwitchStatement
   = SwitchToken __ "(" __ discriminant:Expression __ ")" __
     cases:CaseBlock {
-    return t.switchStatement(discriminant, cases);
-  }
+      return t.switchStatement(discriminant, cases);
+    }
 
 CaseBlock
   = "{" __ clauses:(CaseClauses __)? "}" {
@@ -1137,7 +1137,7 @@ Finally
 DebuggerStatement
   = DebuggerToken EOS { return t.debuggerStatement(); }
 
-// ----- A.5 Functions and Programs -----
+// ----- A.4 Functions and Classes -----
 
 ArrowFunctionExpression
   = asyncParams:ArrowFunctionParams __ "=>" __ body:ArrowFunctionBody {
@@ -1173,11 +1173,11 @@ FunctionBody
 
 ArrowFunctionParams
   = async:("async" __r)? "(" __ params:(FormalParameterList __)? ")" {
-    return {
-      params: optionalList(extractOptional(params, 0)),
-      async: Boolean(async),
-    };
-  }
+      return {
+        params: optionalList(extractOptional(params, 0)),
+        async: Boolean(async),
+      };
+    }
   / param:Identifier { return { params: [param], async: false }; }
 
 ArrowFunctionBody
@@ -1211,7 +1211,7 @@ ArrayPattern
     }
 
 ObjectPattern
-  = "{" __ properties:(ObjectPatternPropertyList)? __ "}" { return t.objectPattern([]); }
+  = "{" __ properties:ObjectPatternPropertyList? __ "}" { return t.objectPattern([]); }
 
 ObjectPatternPropertyList
   = properties:ObjectPatternPropertyListNoTraillingComma (__ ",")? { return properties; }
@@ -1229,6 +1229,61 @@ ObjectPatternPropertyAssignment
       return objectProperty;
     }
 
+// ----- A.5 Scripts and Modules -----
+
+ImportDefaultSpecifier
+  = local:Identifier {
+      t.importDefaultSpecifier(local);
+    }
+
+ImportNamespaceSpecifier
+  = "*" __ "as" __ local:Identifier {
+      t.importNamespaceSpecifier(local);
+    }
+
+ImportSpecifiers
+  = "{" __ imports:ImportSpecifierList? __ "}" { return imports; }
+
+ImportSpecifierList
+  = imports:ImportSpecifierListNoTraillingComma (__ ",") ? { return imports; }
+
+ImportSpecifierListNoTraillingComma
+  = head:ImportSpecifier tail:(__ "," __ ImportSpecifier)* {
+      return buildList(head, tail, 3);
+    }
+
+ImportSpecifier
+  = imported:Identifier __ "as" __ local:Identifier {
+      return t.importSpecifier(local, imported);
+    }
+  / imported:Identifier {
+      return t.importSpecifier(imported, imported);
+    }
+
+ImportClause
+  = specifier:ImportDefaultSpecifier { return [specifier]; }
+  / specifier:ImportNamespaceSpecifier { return [specifier]; }
+  / ImportSpecifiers
+  / defaultSpecifier:ImportDefaultSpecifier
+    namespaceSpecifier:ImportNamespaceSpecifier {
+      return [defaultSpecifier, namespaceSpecifier];
+    }
+  / defaultSpecifier:ImportDefaultSpecifier
+    importSpecifiers:ImportSpecifiers {
+      return [defaultSpecifier].concat(importSpecifiers);
+    }
+
+ImportDeclaration
+  = ImportToken __
+    specifiers:ImportClause __
+    "from" __
+    source:StringLiteral {
+      return t.importDeclaration(specifiers, source);
+    }
+  / ImportToken __ source:StringLiteral {
+      t.importDeclaration([], source);
+    }
+
 Program
   // Second arg: Directive (use strict stuff)
   = body:SourceElements? { return t.program(optionalList(body)); }
@@ -1241,15 +1296,16 @@ SourceElements
 SourceElement
   = Statement
   / FunctionDeclaration
+  / ImportDeclaration
 
-// ----- A.6 Universal Resource Identifier Character Classes -----
-
-// Irrelevant.
-
-// ----- A.7 Regular Expressions -----
+// ----- A.6 Number Conversions -----
 
 // Irrelevant.
 
-// ----- A.8 JSON -----
+// ----- A.7 Universal Resource Identifier Character Classes -----
+
+// Irrelevant.
+
+// ----- A.8 Regular Expressions -----
 
 // Irrelevant.
