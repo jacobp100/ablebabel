@@ -1,0 +1,5 @@
+// FLOW
+
+// Placeholder
+TypeAnnotation
+  = ":" Identifier

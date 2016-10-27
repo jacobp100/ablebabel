@@ -15,6 +15,8 @@ var keysToExclude = {
   ObjectProperty: ['method'],
   ObjectMethod: ['method'],
   TryStatement: ['guardedHandlers'],
+  JSXExpressionContainer: ['innerComments'],
+  JSXEmptyExpression: ['innerComments'],
 };
 
 const testsToSkip = [

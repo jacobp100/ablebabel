@@ -67,11 +67,7 @@ const parserForPlugins = (plugins) => {
   return parser;
 };
 
-const parse = (code) => {
-  const options = {
-    plugins: ['jsx'],
-  };
-
+const parse = (code, options) => {
   try {
     return parserForPlugins(options.plugins || []).parse(code);
   } catch (e) {

@@ -1,11 +1,9 @@
 const { parse } = require('./src');
 
 const code = `
-  function test() {
-    const x = <JSXElement />;
-  }
+  <n:a n:v />
 `;
 
-const ast = parse(code);
+const ast = parse(code, { plugins: ['jsx'] });
 
 console.log(JSON.stringify(ast));
