@@ -79,7 +79,7 @@
 }
 
 Start
-  = __ program:Program __ { return program; }
+  = __ file:File __ { return file; }
 
 // ----- A.1 Lexical Grammar -----
 
@@ -1231,6 +1231,23 @@ ObjectPatternPropertyAssignment
 
 // ----- A.5 Scripts and Modules -----
 
+File
+  = program:Program { return t.file(program); }
+
+Program
+  // Second arg: Directive (use strict stuff)
+  = body:SourceElements? { return t.program(optionalList(body)); }
+
+SourceElements
+  = head:SourceElement tail:(__ SourceElement)* {
+      return buildList(head, tail, 1);
+    }
+
+SourceElement
+  = Statement
+  / FunctionDeclaration
+  / ImportDeclaration
+
 ImportDefaultSpecifier
   = local:Identifier {
       t.importDefaultSpecifier(local);
@@ -1283,20 +1300,6 @@ ImportDeclaration
   / ImportToken __ source:StringLiteral {
       t.importDeclaration([], source);
     }
-
-Program
-  // Second arg: Directive (use strict stuff)
-  = body:SourceElements? { return t.program(optionalList(body)); }
-
-SourceElements
-  = head:SourceElement tail:(__ SourceElement)* {
-      return buildList(head, tail, 1);
-    }
-
-SourceElement
-  = Statement
-  / FunctionDeclaration
-  / ImportDeclaration
 
 // ----- A.6 Number Conversions -----
 
