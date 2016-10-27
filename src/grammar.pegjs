@@ -34,11 +34,6 @@
   const assert = require('assert');
   const t = require('babel-types');
 
-  var TYPES_TO_PROPERTY_NAMES = {
-    CallExpression:   "callee",
-    MemberExpression: "object",
-  };
-
   function filledArray(count, value) {
     return Array.apply(null, new Array(count))
       .map(function() { return value; });
@@ -335,7 +330,7 @@ RegularExpressionLiteral "regular expression"
         error(e.message);
       }
 
-      return t.literal(value)
+      return t.regExpLiteral(pattern, flags);
     }
 
 RegularExpressionBody
@@ -549,13 +544,7 @@ PropertyNameAndValueListNoTraillingComma
     }
 
 PropertyAssignment
-  = property:ObjectPropertyKey __ ":" __ value:AssignmentExpression {
-      return t.objectProperty(property.key, value, property.computed, false);
-    }
-  / shorthand:Identifier {
-      return t.objectProperty(shorthand, shorthand, false, true);
-    }
-  / GetToken __ property:ObjectPropertyKey __
+  = GetToken __ property:ObjectPropertyKey __
     params:FunctionFormalParameters __
     "{" __ body:FunctionBody __ "}"
     {
@@ -575,16 +564,23 @@ PropertyAssignment
     params:FunctionFormalParameters __
     "{" __ body:FunctionBody __ "}"
     {
-      return t.objectMethod(
+      const objectMethod = t.objectMethod(
         'method',
         property.key,
         params,
         body,
-        property.computed,
-        Boolean(isAsync),
-        null,
-        Boolean(isGenerator)
+        property.computed
       );
+      // Work around t.objectMethod bug
+      objectMethod.async = Boolean(isAsync);
+      objectMethod.generator = Boolean(isGenerator);
+      return objectMethod;
+    }
+  / property:ObjectPropertyKey __ ":" __ value:AssignmentExpression {
+      return t.objectProperty(property.key, value, property.computed, false);
+    }
+  / shorthand:Identifier {
+      return t.objectProperty(shorthand, shorthand, false, true);
     }
 
 ObjectPropertyKey
@@ -592,6 +588,41 @@ ObjectPropertyKey
   / key:StringLiteral { return { key, computed: false }; }
   / key:NumericLiteral { return { key, computed: false }; }
   / "[" key:Statement "]" { return { key, computed: true }; }
+
+Pattern
+  = ArrayPattern
+  / ObjectPattern
+
+ArrayPattern
+  = "[" __
+    head:FunctionParameter
+    tail:(__ "," __ FunctionParameter)
+    rest:(__ "," __ "..." __ Identifier)? __
+    "]" {
+      return t.arrayPattern([].concat(buildList(head, tail, 3), rest ? [t.RestElement(rest[4])] : []));
+    }
+  / "[" __ param:Identifier __ "]" {
+      return t.arrayPattern([param]);
+    }
+
+ObjectPattern
+  = "{" __ properties:ObjectPatternPropertyList? __ "}" { return t.objectPattern([]); }
+
+ObjectPatternPropertyList
+  = properties:ObjectPatternPropertyListNoTraillingComma (__ ",")? { return properties; }
+
+ObjectPatternPropertyListNoTraillingComma
+  = head:ObjectPatternPropertyAssignment tail:(__ "," __ ObjectPatternPropertyAssignment)* {
+      return buildList(head, tail, 3);
+    }
+
+ObjectPatternPropertyAssignment
+  = property:ObjectPropertyKey value:(__ ":" __ FunctionParameter)? {
+      const workaroundValue = t.Identifier('dummy');
+      const objectProperty = t.ObjectProperty(property.key, workaroundValue, property.computed, false);
+      objectProperty.value = value ? value[3] : property.key;
+      return objectProperty;
+    }
 
 MemberExpression
   = head:(
@@ -631,21 +662,19 @@ CallExpression
     )
     tail:(
         __ args:Arguments {
-          return t.callExpression(args);
+          return { builder: 'callExpression', args: [args] };
         }
       / __ "[" __ property:Expression __ "]" {
-          return t.memberExpression(property, true);
+          return { builder: 'memberExpression', args: [property, true] };
         }
       / __ "." __ property:IdentifierName {
-          return t.memberExpression(property, false);
+          return { builder: 'memberExpression', args: [property, false] };
         }
     )*
     {
-      return tail.reduce(function(result, element) {
-        element[TYPES_TO_PROPERTY_NAMES[element.type]] = result;
-
-        return element;
-      }, head);
+      return tail.reduce((result, element) => (
+        t[element.builder](result, ...element.args)
+      ), head);
     }
 
 Arguments
@@ -948,6 +977,9 @@ VariableDeclaration
   = id:Identifier init:(__ Initialiser)? {
       return t.variableDeclarator(id, extractOptional(init, 1));
     }
+  / id:Pattern __ init:Initialiser {
+      return t.variableDeclarator(id, init);
+    }
 
 VariableDeclarationNoIn
   = id:Identifier init:(__ InitialiserNoIn)? {
@@ -1174,7 +1206,13 @@ FunctionExpression
     params:FunctionFormalParameters __
     "{" __ body:FunctionBody __ "}"
     {
-      return t.functionExpression(id, params, body, Boolean(isGenerator), Boolean(isAsync));
+      return t.functionExpression(
+        extractOptional(id, 0),
+        params,
+        body,
+        Boolean(isGenerator),
+        Boolean(isAsync)
+      );
     }
 
 FunctionBody
@@ -1200,39 +1238,7 @@ FormalParameterList
 
 FunctionParameter
   = Identifier
-  / ArrayPattern
-  / ObjectPattern
-
-ArrayPattern
-  = "[" __
-    head:FunctionParameter
-    tail:(__ "," __ FunctionParameter)
-    rest:(__ "," __ "..." __ Identifier)? __
-    "]" {
-      return t.arrayPattern([].concat(buildList(head, tail, 3), rest ? [t.RestElement(rest[4])] : []));
-    }
-  / "[" __ param:Identifier __ "]" {
-      return t.arrayPattern([param]);
-    }
-
-ObjectPattern
-  = "{" __ properties:ObjectPatternPropertyList? __ "}" { return t.objectPattern([]); }
-
-ObjectPatternPropertyList
-  = properties:ObjectPatternPropertyListNoTraillingComma (__ ",")? { return properties; }
-
-ObjectPatternPropertyListNoTraillingComma
-  = head:ObjectPatternPropertyAssignment tail:(__ "," __ ObjectPatternPropertyAssignment)* {
-      return buildList(head, tail, 3);
-    }
-
-ObjectPatternPropertyAssignment
-  = property:ObjectPropertyKey value:(__ ":" __ FunctionParameter)? {
-      const workaroundValue = t.Identifier('dummy');
-      const objectProperty = t.ObjectProperty(property.key, workaroundValue, property.computed, false);
-      objectProperty.value = value ? value[3] : key;
-      return objectProperty;
-    }
+  / Pattern
 
 ClassDeclaration
   = ClassToken __
@@ -1272,10 +1278,11 @@ ClassMethod
       assert(params.length === 1, 'Setter should take exactly one parameter');
       return t.classMethod('set', property.key, params, body, property.computed, Boolean(isStatic));
     }
-  / "constructor" __
+  / propertyKey:("constructor" / "static") __
     params:FunctionFormalParameters __
-    "{" __ body:FunctionBody __ "}" {
-      const identifier = t.identifier('constructor');
+    "{" __ body:FunctionBody __ "}"
+    {
+      const identifier = t.identifier(propertyKey);
       return t.classMethod('constructor', identifier, params, body);
     }
   / isStatic:("static" __)?
@@ -1307,7 +1314,7 @@ File
 
 Program
   // Second arg: Directive (use strict stuff)
-  = Shebang? body:SourceElements? { return t.program(optionalList(body)); }
+  = Shebang? __ body:SourceElements? __ { return t.program(optionalList(body)); }
 
 Shebang
   = "#!" [^\n]* __

@@ -1,8 +1,9 @@
 const { parse } = require('./src');
 
-const code = `#!/usr/bin/env babel-node
-
-import {spawn} from 'foobar';
+const code = `
+  function test() {
+    const x = <JSXElement />;
+  }
 `;
 
 const ast = parse(code);
