@@ -1,10 +1,8 @@
 const { parse } = require('./src');
 
-const code = `
-/* Are top-level comments allowed? */
-function test() {
-  return null;
-}
+const code = `#!/usr/bin/env babel-node
+
+import {spawn} from 'foobar';
 `;
 
 const ast = parse(code);

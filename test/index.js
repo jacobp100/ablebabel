@@ -6,9 +6,11 @@ var _           = require("lodash");
 var fixtures = getFixtures(__dirname + "/fixtures");
 
 var keysToExclude = {
-  '*': ['start', 'end', 'loc', 'trailingComments', 'leadingComments'],
+  '*': ['start', 'end', 'loc', 'trailingComments', 'leadingComments', 'extra'],
   File: ['comments'],
   Program: ['sourceType'],
+  ClassMethod: ['decorators'],
+  FunctionDeclaration: ['expression'],
 };
 
 _.each(fixtures, function (suites, name) {
@@ -62,10 +64,15 @@ function runTest(test) {
     var ast = parse(test.actual.code, opts);
   } catch (err) {
     if (opts.throws) {
-      if (err.message === opts.throws) {
+      var actualMessage = err.message;
+      if (err.location) {
+        var start = err.location.start;
+        actualMessage = "Unexpected token (" + (start.column - 1) + ":" + (start.column - 1) + ")";
+      }
+      if (actualMessage === opts.throws) {
         return;
       } else {
-        err.message = "Expected error message: " + opts.throws + ". Got error message: " + err.message;
+        err.message = "Expected error message: " + opts.throws + ". Got error message: " + actualMessage;
         throw err;
       }
     }

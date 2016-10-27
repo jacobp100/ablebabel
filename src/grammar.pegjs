@@ -31,6 +31,7 @@
 // [4] http://boshi.inimino.org/3box/asof/1270029991384/PEG/ECMAScript_unified.peg
 
 {
+  const assert = require('assert');
   const t = require('babel-types');
 
   var TYPES_TO_PROPERTY_NAMES = {
@@ -555,34 +556,34 @@ PropertyAssignment
       return t.objectProperty(shorthand, shorthand, false, true);
     }
   / GetToken __ property:ObjectPropertyKey __
-    "(" __ params:FormalParameterList ")" __
+    params:FunctionFormalParameters __
     "{" __ body:FunctionBody __ "}"
     {
       assert(params.length === 0, 'Getter should take no parameters');
       return t.objectMethod('get', property.key, [], body, property.computed);
     }
   / SetToken __ property:ObjectPropertyKey __
-    "(" __ params:FormalParameterList __ ")" __
+    params:FunctionFormalParameters __
     "{" __ body:FunctionBody __ "}"
     {
       assert(params.length === 1, 'Setter should take exactly one parameter');
       return t.objectMethod('set', property.key, params, body, property.computed);
     }
-  / async:("async" __r)?
-    FunctionToken __
-    generator:("*" __)?
+  / isAsync:("async" __r)?
+    isGenerator:("*" __)?
     property:ObjectPropertyKey __
-    "(" __ params:(FormalParameterList __)? ")" __
+    params:FunctionFormalParameters __
     "{" __ body:FunctionBody __ "}"
     {
       return t.objectMethod(
         'method',
         property.key,
-        params, body,
+        params,
+        body,
         property.computed,
-        Boolean(async),
+        Boolean(isAsync),
         null,
-        Boolean(generator)
+        Boolean(isGenerator)
       );
     }
 
@@ -597,6 +598,7 @@ MemberExpression
       ArrowFunctionExpression
       / PrimaryExpression
       / FunctionExpression
+      / ClassExpression
       / NewToken __ callee:MemberExpression __ args:Arguments {
           return t.newExpression(callee, args);
         }
@@ -1052,7 +1054,7 @@ ContinueStatement
 
 BreakStatement
   = BreakToken EOS {
-      return t.breakStatement(label);
+      return t.breakStatement(null);
     }
   / BreakToken _ label:Identifier EOS {
       return t.breakStatement(label);
@@ -1140,49 +1142,52 @@ DebuggerStatement
 // ----- A.4 Functions and Classes -----
 
 ArrowFunctionExpression
-  = asyncParams:ArrowFunctionParams __ "=>" __ body:ArrowFunctionBody {
-      return t.arrowFunctionExpression(asyncParams.params, body, asyncParams.async);
+  = isAsync:("async" __)?
+    params:FunctionFormalParameters __
+    "=>" __
+    body:ArrowFunctionBody {
+      return t.arrowFunctionExpression(params, body, Boolean(isAsync));
+    }
+  / isAsync:("async" __r)?
+    param:Identifier __
+    "=>" __
+    body:ArrowFunctionBody {
+      return t.arrowFunctionExpression([param], body, Boolean(isAsync));
     }
 
 FunctionDeclaration
-  = async:("async" __r)?
+  = isAsync:("async" __r)?
     FunctionToken __
-    generator:("*" __)?
+    isGenerator:("*" __)?
     id:Identifier __
-    "(" __ params:(FormalParameterList __)? ")" __
+    params:FunctionFormalParameters __
     "{" __ body:FunctionBody __ "}"
     {
-      params = optionalList(extractOptional(params, 0));
-      return t.functionDeclaration(id, params, body, Boolean(generator), Boolean(async));
+      return t.functionDeclaration(id, params, body, Boolean(isGenerator), Boolean(isAsync));
     }
 
 FunctionExpression
-  = async:("async" __r)?
+  = isAsync:("async" __r)?
     FunctionToken __
-    generator:("*" __)?
+    isGenerator:("*" __)?
     id:(Identifier __)?
-    "(" __ params:(FormalParameterList __)? ")" __
+    params:FunctionFormalParameters __
     "{" __ body:FunctionBody __ "}"
     {
-      params = optionalList(extractOptional(params, 0));
-      return t.functionExpression(id, params, body, Boolean(generator), Boolean(async));
+      return t.functionExpression(id, params, body, Boolean(isGenerator), Boolean(isAsync));
     }
 
 FunctionBody
   = body:SourceElements? { return t.blockStatement(optionalList(body)); }
 
-ArrowFunctionParams
-  = async:("async" __r)? "(" __ params:(FormalParameterList __)? ")" {
-      return {
-        params: optionalList(extractOptional(params, 0)),
-        async: Boolean(async),
-      };
-    }
-  / param:Identifier { return { params: [param], async: false }; }
-
 ArrowFunctionBody
   = "{" __ body:FunctionBody __ "}" { return body; }
   / MemberExpression
+
+FunctionFormalParameters
+  = "(" __ params:(FormalParameterList __)? ")" {
+    return optionalList(extractOptional(params, 0));
+  }
 
 FormalParameterList
   = head:FunctionParameter tail:(__ "," __ FunctionParameter)* rest:(__ "," __ "..." __ Identifier)? {
@@ -1229,6 +1234,72 @@ ObjectPatternPropertyAssignment
       return objectProperty;
     }
 
+ClassDeclaration
+  = ClassToken __
+    id:Identifier __
+    superClass:(ExtendsToken __ Expression __)?
+    "{" __ body:ClassBody __ "}"
+    {
+      return t.classDeclaration(id, extractOptional(superClass, 2), body, []);
+    }
+
+ClassExpression
+  = ClassToken __
+    id:Identifier? __
+    superClass:(ExtendsToken __ Expression __)?
+    "{" __ body:ClassBody __ "}"
+    {
+      return t.classExpression(id, extractOptional(superClass, 2), body, []);
+    }
+
+ClassBody
+  = body:(ClassMethod)* { return t.classBody(body); }
+
+ClassMethod
+  = isStatic:("static" __)?
+    GetToken __ property:ObjectPropertyKey __
+    params:FunctionFormalParameters __
+    "{" __ body:FunctionBody __ "}"
+    {
+      assert(params.length === 0, 'Getter should take no parameters');
+      return t.classMethod('get', property.key, [], body, property.computed, Boolean(isStatic));
+    }
+  / isStatic:("static" __)?
+    SetToken __ property:ObjectPropertyKey __
+    params:FunctionFormalParameters __
+    "{" __ body:FunctionBody __ "}"
+    {
+      assert(params.length === 1, 'Setter should take exactly one parameter');
+      return t.classMethod('set', property.key, params, body, property.computed, Boolean(isStatic));
+    }
+  / "constructor" __
+    params:FunctionFormalParameters __
+    "{" __ body:FunctionBody __ "}" {
+      const identifier = t.identifier('constructor');
+      return t.classMethod('constructor', identifier, params, body);
+    }
+  / isStatic:("static" __)?
+    isAsync:("async" __r)?
+    isGenerator:("*" __)?
+    property:ObjectPropertyKey __
+    params:FunctionFormalParameters __
+    "{" __ body:FunctionBody __ "}"
+    {
+      assert(!isStatic && property.key.name !== 'constructor', 'Invalid constructor');
+      const classMethod = t.classMethod(
+        'method',
+        property.key,
+        params,
+        body,
+        property.computed,
+        Boolean(isStatic)
+      );
+      // t.classMethod is broken (won't accept these as arguments)
+      classMethod.async = Boolean(isAsync);
+      classMethod.generator = Boolean(isGenerator);
+      return classMethod;
+    }
+
 // ----- A.5 Scripts and Modules -----
 
 File
@@ -1236,7 +1307,10 @@ File
 
 Program
   // Second arg: Directive (use strict stuff)
-  = body:SourceElements? { return t.program(optionalList(body)); }
+  = Shebang? body:SourceElements? { return t.program(optionalList(body)); }
+
+Shebang
+  = "#!" [^\n]* __
 
 SourceElements
   = head:SourceElement tail:(__ SourceElement)* {
@@ -1246,7 +1320,20 @@ SourceElements
 SourceElement
   = Statement
   / FunctionDeclaration
+  / ClassDeclaration
   / ImportDeclaration
+  / ExportDeclaration
+
+ImportDeclaration
+  = ImportToken __
+    specifiers:ImportClause __
+    "from" __
+    source:StringLiteral {
+      return t.importDeclaration(specifiers, source);
+    }
+  / ImportToken __ source:StringLiteral {
+      t.importDeclaration([], source);
+    }
 
 ImportDefaultSpecifier
   = local:Identifier {
@@ -1290,15 +1377,17 @@ ImportClause
       return [defaultSpecifier].concat(importSpecifiers);
     }
 
-ImportDeclaration
-  = ImportToken __
-    specifiers:ImportClause __
-    "from" __
+ExportDeclaration
+  = ExportToken __
+    "*" __
+    "from"
     source:StringLiteral {
-      return t.importDeclaration(specifiers, source);
+      return t.exportAllDeclaration(source);
     }
-  / ImportToken __ source:StringLiteral {
-      t.importDeclaration([], source);
+  / ExportToken __
+    DefaultToken __
+    declaration:(FunctionDeclaration / ClassDeclaration / Expression) {
+      return t.exportDefaultDeclaration(declaration);
     }
 
 // ----- A.6 Number Conversions -----
